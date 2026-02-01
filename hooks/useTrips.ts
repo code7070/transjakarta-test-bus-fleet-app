@@ -1,82 +1,88 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { Trip } from "../types";
 import { tripApi } from "../services/api/tripApi";
 
-export const useTrips = (selectedRouteIds: string[] = []) => {
-  const [trips, setTrips] = useState<Trip[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-  const [offset, setOffset] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
-  const limit = 20;
+const limit = 50;
 
-  const fetchTrips = useCallback(
-    async (isLoadMore = false, signal?: AbortSignal) => {
-      // MBTA API Requirement: At least one filter is required for /trips
-      if (!selectedRouteIds || selectedRouteIds.length === 0) {
-        setTrips([]);
-        setHasMore(false);
-        setLoading(false);
-        return;
-      }
+// Custom debounce hook
+const useDebounce = <T>(value: T, delay: number): T => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
 
-      setLoading(true);
-      setError(null);
-
-      try {
-        const currentOffset = isLoadMore ? offset : 0;
-        const response = await tripApi.getTrips(
-          currentOffset,
-          limit,
-          selectedRouteIds,
-          signal,
-        );
-
-        const newTrips = response.data || [];
-
-        setTrips((prev) => {
-          if (!isLoadMore) return newTrips;
-
-          // Deduplicate by ID
-          const existingIds = new Set(prev.map((t) => t.id));
-          const filteredNewTrips = newTrips.filter(
-            (t) => !existingIds.has(t.id),
-          );
-          return [...prev, ...filteredNewTrips];
-        });
-
-        setOffset((prev) => (isLoadMore ? prev + limit : limit));
-        setHasMore(newTrips.length === limit);
-      } catch (err) {
-        if (err instanceof Error && err.name === "AbortError") return;
-        setError(err instanceof Error ? err : new Error("Unknown error"));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [offset, limit, selectedRouteIds],
-  );
-
-  // Reset and refetch when selected routes change
   useEffect(() => {
-    const controller = new AbortController();
-
-    // Clear and fetch
-    setOffset(0);
-    setHasMore(true);
-    setTrips([]);
-    fetchTrips(false, controller.signal);
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
 
     return () => {
-      controller.abort();
+      clearTimeout(handler);
     };
-  }, [selectedRouteIds.join(",")]);
+  }, [value, delay]);
 
-  const loadMore = useCallback(() => {
-    if (hasMore && !loading) {
-      fetchTrips(true);
+  return debouncedValue;
+};
+
+export const useTrips = (selectedRouteIds: string[] = []) => {
+  // Debounce route changes by 500ms
+  const debouncedRouteIds = useDebounce(selectedRouteIds, 500);
+
+  const {
+    data,
+    isLoading,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: [
+      "trips",
+      [...debouncedRouteIds].sort((a, b) => a.localeCompare(b)).join(","),
+    ],
+    queryFn: async ({ pageParam = 0 }) => {
+      const response = await tripApi.getTrips(
+        pageParam,
+        limit,
+        debouncedRouteIds,
+      );
+      return response.data;
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      if (lastPage.length < limit) return undefined;
+      return allPages.length * limit;
+    },
+    initialPageParam: 0,
+    enabled: debouncedRouteIds.length > 0, // Only fetch when routes are selected
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+  });
+
+  // Deduplicate trips by ID across all pages
+  const trips = data?.pages.flat() || [];
+  const uniqueTrips = trips.reduce<Trip[]>((acc, trip) => {
+    if (!acc.some((t) => t.id === trip.id)) {
+      acc.push(trip);
     }
-  }, [hasMore, loading, fetchTrips]);
+    return acc;
+  }, []);
 
-  return { trips, loading, error, hasMore, loadMore };
+  // Load more with increment delay (1+n pattern)
+  const loadMore = () => {
+    if (hasNextPage && !isFetchingNextPage) {
+      const pageCount = data?.pages.length || 0;
+      const delay = 100 + pageCount * 50; // 100ms base + 50ms per page
+
+      setTimeout(() => {
+        fetchNextPage();
+      }, delay);
+    }
+  };
+
+  return {
+    trips: uniqueTrips,
+    loading: isLoading,
+    fetching: isFetchingNextPage,
+    error: error || null,
+    hasMore: hasNextPage ?? false,
+    loadMore,
+  };
 };

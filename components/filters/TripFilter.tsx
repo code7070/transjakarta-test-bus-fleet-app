@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect } from "react";
 import { MultiSelectDropdown, Option } from "./MultiSelectDropdown";
 import { useTrips } from "../../hooks/useTrips";
 
@@ -6,15 +6,23 @@ interface TripFilterProps {
   selectedTrips: string[];
   selectedRoutes?: string[]; // Add route filtering capability
   onChange: (ids: string[]) => void;
+  onLoadingChange?: (loading: boolean) => void; // Callback to notify parent about loading state
 }
 
 export const TripFilter: React.FC<TripFilterProps> = ({
   selectedTrips,
   selectedRoutes,
   onChange,
+  onLoadingChange,
 }) => {
   // Pass selectedRoutes to useTrips to fetch relevant trips from API
-  const { trips, loading, hasMore, loadMore } = useTrips(selectedRoutes);
+  const { trips, loading, fetching, hasMore, loadMore } =
+    useTrips(selectedRoutes);
+
+  // Notify parent about loading state changes
+  useEffect(() => {
+    onLoadingChange?.(loading || fetching);
+  }, [loading, fetching, onLoadingChange]);
 
   // Group trips by Headsign to avoid duplicates in the UI
   // Instead of using Trip ID, we use Headsign as the filter value
@@ -44,9 +52,9 @@ export const TripFilter: React.FC<TripFilterProps> = ({
       options={uniqueOptions}
       selectedIds={selectedTrips}
       onSelectionChange={onChange}
-      onLoadMore={() => {}}
+      onLoadMore={loadMore}
       hasMore={hasMore}
-      loading={loading}
+      loading={loading || fetching}
       disabled={isDisabled}
     />
   );

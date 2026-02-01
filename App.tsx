@@ -19,12 +19,14 @@ import {
   RotateCw,
   Waypoints,
   Signpost,
+  Loader2,
 } from "lucide-react";
 
 const App: React.FC = () => {
   const { data, loading, error, refetch } = useVehicles();
   const [selectedRoutes, setSelectedRoutes] = useState<string[]>([]);
   const [selectedTrips, setSelectedTrips] = useState<string[]>([]); // Note: These are now Headsigns, not IDs
+  const [isTripLoading, setIsTripLoading] = useState(false);
 
   // Modal State
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
@@ -69,8 +71,7 @@ const App: React.FC = () => {
   // Handlers
   const handleRouteChange = (ids: string[]) => {
     setSelectedRoutes(ids);
-    // When route changes, clear selected trips as they might not be valid anymore
-    setSelectedTrips([]);
+    // Don't clear selected trips - let users accumulate trip selections across routes
     goToPage(1);
   };
 
@@ -233,13 +234,18 @@ const App: React.FC = () => {
               {/* Trip Filter with Icon */}
               <div className="relative flex-1 sm:max-w-xs group">
                 <div className="absolute left-3 top-3 z-10 text-yellow-600 pointer-events-none transition-transform group-hover:scale-110">
-                  <Signpost className="w-4 h-4" />
+                  {isTripLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Signpost className="w-4 h-4" />
+                  )}
                 </div>
                 <div className="[&_button]:pl-10 [&_button]:h-[42px]">
                   <TripFilter
                     selectedTrips={selectedTrips}
                     selectedRoutes={selectedRoutes}
                     onChange={handleTripChange}
+                    onLoadingChange={setIsTripLoading}
                   />
                 </div>
               </div>
