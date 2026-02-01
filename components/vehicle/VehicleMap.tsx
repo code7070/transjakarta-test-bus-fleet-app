@@ -67,7 +67,7 @@ const VehicleMap: React.FC<VehicleMapProps> = ({
     const map = L.map(container, {
       center: [latitude, longitude],
       zoom: 15,
-      scrollWheelZoom: true,
+      scrollWheelZoom: false,
     });
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
