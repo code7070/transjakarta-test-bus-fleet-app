@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from "react";
+import React from "react";
 import { Vehicle } from "../../types";
 import {
   formatRelativeTime,
@@ -18,8 +18,7 @@ import {
   Activity,
   GitFork,
 } from "lucide-react";
-
-const VehicleMap = lazy(() => import("./VehicleMap"));
+import VehicleMap from "./VehicleMap";
 
 interface VehicleDetailSheetProps {
   vehicle: Vehicle;
@@ -178,21 +177,13 @@ export const VehicleDetailSheet: React.FC<VehicleDetailSheetProps> = ({
         {/* Map Visualization */}
         <div className="space-y-3">
           <div className="h-56 w-full rounded-2xl overflow-hidden border border-gray-200 shadow-sm relative z-0 ring-1 ring-gray-100">
-            <Suspense
-              fallback={
-                <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 text-muted gap-2">
-                  <Loader2 className="w-6 h-6 text-primary animate-spin" />
-                  <span className="text-xs font-medium">Memuat Peta...</span>
-                </div>
-              }
-            >
-              <VehicleMap
-                latitude={attributes.latitude}
-                longitude={attributes.longitude}
-                label={attributes.label}
-                bearing={attributes.bearing}
-              />
-            </Suspense>
+            <VehicleMap
+              key={vehicle.id}
+              latitude={attributes.latitude}
+              longitude={attributes.longitude}
+              label={attributes.label}
+              bearing={attributes.bearing}
+            />
           </div>
 
           {/* Current Location Text */}

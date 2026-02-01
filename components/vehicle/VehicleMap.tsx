@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useId } from "react";
 import L from "leaflet";
 
 interface VehicleMapProps {
@@ -9,17 +9,18 @@ interface VehicleMapProps {
 }
 
 // Custom Bus Icon using DivIcon
-const busIcon = new L.DivIcon({
-  html: `
+const createBusIcon = () =>
+  L.divIcon({
+    html: `
     <div style="
-      background-color: #0066b2; 
-      width: 36px; 
-      height: 36px; 
-      border-radius: 50%; 
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
-      border: 3px solid white; 
+      background-color: #0066b2;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 3px solid white;
       box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     ">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -33,11 +34,11 @@ const busIcon = new L.DivIcon({
       </svg>
     </div>
   `,
-  className: "custom-bus-marker",
-  iconSize: [36, 36],
-  iconAnchor: [18, 18],
-  popupAnchor: [0, -18],
-});
+    className: "custom-bus-marker",
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
+    popupAnchor: [0, -18],
+  });
 
 const VehicleMap: React.FC<VehicleMapProps> = ({
   latitude,
@@ -46,7 +47,9 @@ const VehicleMap: React.FC<VehicleMapProps> = ({
   bearing,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+  const uniqueId = useId();
 
   // Validate coordinates
   const isValidLocation =
@@ -55,12 +58,13 @@ const VehicleMap: React.FC<VehicleMapProps> = ({
     Math.abs(latitude) <= 90 &&
     Math.abs(longitude) <= 180;
 
-  // 1. Initialization and Cleanup
+  // Initialize and cleanup map
   useEffect(() => {
-    if (!mapContainerRef.current) return;
+    const container = mapContainerRef.current;
+    if (!container || !isValidLocation) return;
 
-    // Create Map
-    const map = L.map(mapContainerRef.current, {
+    // Create map
+    const map = L.map(container, {
       center: [latitude, longitude],
       zoom: 15,
       scrollWheelZoom: true,
@@ -71,36 +75,48 @@ const VehicleMap: React.FC<VehicleMapProps> = ({
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map);
 
-    mapInstanceRef.current = map;
+    // Create marker
+    const marker = L.marker([latitude, longitude], {
+      icon: createBusIcon(),
+    }).addTo(map);
 
-    return () => {
-      map.remove();
-      mapInstanceRef.current = null;
-    };
-  }, []); // Run once on mount
-
-  // 2. Update logic
-  useEffect(() => {
-    if (!mapInstanceRef.current || !isValidLocation) return;
-
-    const map = mapInstanceRef.current;
-    map.setView([latitude, longitude], 15);
-
-    // Remove existing marker if any (simpler than tracking ref for this use case)
-    map.eachLayer((layer) => {
-      if (layer instanceof L.Marker) {
-        map.removeLayer(layer);
-      }
-    });
-
-    const marker = L.marker([latitude, longitude], { icon: busIcon }).addTo(
-      map,
-    );
     marker.bindPopup(`
-        <div class="text-center">
-          <strong class="block text-primary text-sm mb-1">${label}</strong>
-          <span class="text-xs text-muted">Heading: ${bearing}°</span>
-        </div>
+      <div class="text-center">
+        <strong class="block text-primary text-sm mb-1">${label}</strong>
+        <span class="text-xs text-muted">Heading: ${bearing}°</span>
+      </div>
+    `);
+
+    mapRef.current = map;
+    markerRef.current = marker;
+
+    // Cleanup function
+    return () => {
+      if (markerRef.current) {
+        markerRef.current.remove();
+        markerRef.current = null;
+      }
+      if (mapRef.current) {
+        mapRef.current.off();
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
+  }, [uniqueId]); // Only reinitialize if component instance changes
+
+  // Update map view and marker when props change
+  useEffect(() => {
+    if (!mapRef.current || !markerRef.current || !isValidLocation) return;
+
+    const position: L.LatLngExpression = [latitude, longitude];
+
+    mapRef.current.setView(position, mapRef.current.getZoom());
+    markerRef.current.setLatLng(position);
+    markerRef.current.setPopupContent(`
+      <div class="text-center">
+        <strong class="block text-primary text-sm mb-1">${label}</strong>
+        <span class="text-xs text-muted">Heading: ${bearing}°</span>
+      </div>
     `);
   }, [latitude, longitude, label, bearing, isValidLocation]);
 
